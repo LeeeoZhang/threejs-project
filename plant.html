@@ -154,6 +154,28 @@
 			//在x轴旋转几何体
 			geom.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI/2))
 
+			//合并顶点,保持海浪连续
+			geom.mergeVertices()
+
+			//获得顶点
+			let l =geom.vertices.length
+
+			//创建一个新的数组存储与每个顶点关联的值
+			this.waves = []
+			for(let i =0;i<l;i++) {
+				let v= geom.vertices[i]
+				this.waves.push({
+					y:v.y,
+					x:v.x,
+					z:v.z,
+					//随机角度
+					ang:Math.random()*Math.PI*2,
+					//随机距离
+					amp:5+Math.random()*15,
+					//在0.016至0.048度/帧之间随机速度
+					speed:0.016 + Math.random()*0.032
+				})
+			}
 			//创建材质
 			let mat = new THREE.MeshPhongMaterial({
 				color:Colors.blue,
@@ -167,6 +189,35 @@
 
 			//允许大海对象接收阴影
 			this.mesh.receiveShadow = true
+		}
+
+		// 创建一个在每帧可以调用的函数，用于更新顶点的位置来模拟海浪。
+		Sea.prototype.moveWaves = function (){
+
+		   // 获取顶点
+		   let verts = this.mesh.geometry.vertices;
+		   let l = verts.length;
+
+		   for (let i=0; i<l; i++){
+		       let v = verts[i];
+
+		       // 获取关联的值
+		       let vprops = this.waves[i];
+
+		       // 更新顶点的位置
+		       v.x = vprops.x + Math.cos(vprops.ang)*vprops.amp;
+		       v.y = vprops.y + Math.sin(vprops.ang)*vprops.amp;
+
+		       // 下一帧自增一个角度
+		       vprops.ang += vprops.speed;
+		   }
+
+		   // 告诉渲染器代表大海的几何体发生改变
+		   // 事实上，为了维持最好的性能
+		   // Three.js 会缓存几何体和忽略一些修改
+		   // 除非加上这句
+		   this.mesh.geometry.verticesNeedUpdate=true;
+		   sea.mesh.rotation.z += .005;
 		}
 
 		//创建对象，
@@ -250,7 +301,7 @@
 				c.mesh.rotation.z = a + Math.PI/2
 
 				//我们把云放置在场景中的随机深度位置
-       			c.mesh.position.z = -400-Math.random()*400;
+       			c.mesh.position.z = -400 - Math.random() * 400;
     
 			    //每朵云设置一个随机大小
 			    let s = 1+Math.random()*2;
@@ -274,11 +325,20 @@
 			this.mesh = new THREE.Object3D()
 
 			//创建机舱
-			let geomCockpit = new THREE.BoxGeometry(60, 50, 50, 1, 1, 1)
+			let geomCockpit = new THREE.BoxGeometry(80, 50, 50, 1, 1, 1)
 			let matCockpit = new THREE.MeshPhongMaterial({
 				color: Colors.red,
 				shading: THREE.FlatShading
 			})
+			geomCockpit.vertices[4].y-=10;
+			geomCockpit.vertices[4].z+=20;
+			geomCockpit.vertices[5].y-=10;
+			geomCockpit.vertices[5].z-=20;
+			geomCockpit.vertices[6].y+=30;
+			geomCockpit.vertices[6].z+=20;
+			geomCockpit.vertices[7].y+=30;
+			geomCockpit.vertices[7].z-=20;
+
 			let cockpit = new THREE.Mesh(geomCockpit,matCockpit)
 			cockpit.castShadow = true;
 		    cockpit.receiveShadow = true;
@@ -342,6 +402,10 @@
    			this.propeller.add(blade)
    			this.propeller.position.set(50,0,0)
    			this.mesh.add(this.propeller)
+
+			 this.pilot = new Pilot();
+			 this.pilot.mesh.position.set(-10,27,0);
+			 this.mesh.add(this.pilot.mesh);
 		}
 
 		//实例化飞机
@@ -361,6 +425,8 @@
 
 			//每帧更新飞机位置
 			updatePlane()
+			//更新浪
+			sea.moveWaves()
 
 			//渲染场景
 			renderer.render(scene,camera)
@@ -384,6 +450,7 @@
 		    // 更新飞机的位置
 		    airplane.mesh.position.y = targetY
 		    airplane.mesh.position.x = targetX
+		    airplane.pilot.updateHairs();
 		    airplane.propeller.rotation.x += 0.3
 		}
 
@@ -397,6 +464,116 @@
 		   return tv
 		}
 
+		//飞行员
+		function Pilot (){
+			this.mesh = new THREE.Object3D()
+			this.mesh.name = "pilot"
+
+			//头发动画属性
+			this.angleHairs = 0
+
+			//飞行员的身体
+			let bodyGeom = new THREE.BoxGeometry(15,15,15)
+			let bodyMat = new THREE.MeshPhongMaterial({
+				color: Colors.brown,
+				shading:THREE.FlatShading,
+			})
+			let body = new THREE.Mesh(bodyGeom,bodyMat)
+			body.position.set(2,-12,0)
+   			this.mesh.add(body)
+
+   			//飞行员的脸部
+   			let faceGeom = new THREE.BoxGeometry(10,10,10)
+   			let faceMat = new THREE.MeshPhongMaterial({color: Colors.pink})
+   			let face = new THREE.Mesh(faceGeom,faceMat)
+   			this.mesh.add(face)
+
+   			//飞行员的头发
+   			let hairGeom = new THREE.BoxGeometry(4,4,4)
+   			let hairMat = new THREE.MeshPhongMaterial({color: Colors.brown})
+   			let hair = new THREE.Mesh(hairGeom,hairMat)
+
+   			//调整头发形状至底部边界,更易扩展
+   			hair.geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0,2,0))
+
+   			//创建一个头发容器
+   			let hairs = new THREE.Object3D()
+
+   			//头发顶部容器,制作动效
+   			this.hairsTop = new THREE.Object3D()
+
+   			// 创建头顶的头发并放置他们在一个3*4的网格中
+		   for (let i=0; i<12; i++){
+		       let h = hair.clone();
+		       let col = i%3;
+		       let row = Math.floor(i/3);
+		       let startPosZ = -4;
+		       let startPosX = -4;
+		       h.position.set(startPosX + row*4, 0, startPosZ + col*4);
+		       this.hairsTop.add(h);
+		   }
+		   hairs.add(this.hairsTop);
+
+		   //创建脸庞头发
+		   let hairSideGeom = new THREE.BoxGeometry(12,4,2)
+		   hairSideGeom.applyMatrix(new THREE.Matrix4().makeTranslation(-6,0,0))
+		   let hairSideR = new THREE.Mesh(hairSideGeom, hairMat);
+		   let hairSideL = hairSideR.clone();
+		   hairSideR.position.set(8,-2,6);
+		   hairSideL.position.set(8,-2,-6);
+		   hairs.add(hairSideR);
+		   hairs.add(hairSideL);
+
+		   // 创建后脑勺的头发
+		   let hairBackGeom = new THREE.BoxGeometry(2,8,10);
+		   let hairBack = new THREE.Mesh(hairBackGeom, hairMat);
+		   hairBack.position.set(-1,-4,0)
+		   hairs.add(hairBack);
+		   hairs.position.set(-5,5,0);
+
+		   this.mesh.add(hairs);
+
+		   //创建眼镜
+		   let glassGeom = new THREE.BoxGeometry(5,5,5);
+		   let glassMat = new THREE.MeshLambertMaterial({color:Colors.brown});
+		   let glassR = new THREE.Mesh(glassGeom,glassMat);
+		   glassR.position.set(6,0,3);
+		   let glassL = glassR.clone();
+		   glassL.position.z = -glassR.position.z;
+
+		   //创建挡风玻璃
+		   let glassAGeom = new THREE.BoxGeometry(11,1,11);
+		   let glassA = new THREE.Mesh(glassAGeom, glassMat);
+		   this.mesh.add(glassR);
+		   this.mesh.add(glassL);
+		   this.mesh.add(glassA);
+
+		   //创建耳朵
+		   let earGeom = new THREE.BoxGeometry(2,3,2);
+		   let earL = new THREE.Mesh(earGeom,faceMat);
+		   earL.position.set(0,0,-6);
+		   let earR = earL.clone();
+		   earR.position.set(0,0,6);
+		   this.mesh.add(earL);
+		   this.mesh.add(earR);
+		}
+
+		// 移动头发
+		Pilot.prototype.updateHairs = function(){
+
+		   // 获得头发
+		   let hairs = this.hairsTop.children;
+
+		   // 根据 angleHairs 的角度更新头发
+		   let l = hairs.length;
+		   for (let i=0; i<l; i++){
+		       let h = hairs[i];
+		       // 每根头发将周期性的基础上原始大小的75%至100%之间作调整。
+		       h.scale.y = .75 + Math.cos(this.angleHairs+i/3)*.25;
+		   }
+		   // 在下一帧增加角度
+		   this.angleHairs += 0.16;
+		}
 	</script>
 </body>
 </html>
